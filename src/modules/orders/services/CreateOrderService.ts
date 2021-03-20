@@ -1,3 +1,4 @@
+/* eslint-disable no-param-reassign */
 import { inject, injectable } from 'tsyringe';
 
 import AppError from '@shared/errors/AppError';
@@ -12,6 +13,12 @@ interface IProduct {
   quantity: number;
 }
 
+interface ISerializedProducts {
+  price: number;
+  product_id: string;
+  quantity: number;
+}
+
 interface IRequest {
   customer_id: string;
   products: IProduct[];
@@ -20,13 +27,69 @@ interface IRequest {
 @injectable()
 class CreateOrderService {
   constructor(
+    @inject('OrdersRepository')
     private ordersRepository: IOrdersRepository,
+
+    @inject('ProductsRepository')
     private productsRepository: IProductsRepository,
+
+    @inject('CustomersRepository')
     private customersRepository: ICustomersRepository,
   ) {}
 
   public async execute({ customer_id, products }: IRequest): Promise<Order> {
-    // TODO
+    const customer = await this.customersRepository.findById(customer_id);
+
+    if (!customer) {
+      throw new AppError('You need to be logged to create an order!');
+    }
+
+    const productsWithInvalidQuantity = products.filter(
+      product => product.quantity <= 0,
+    );
+
+    if (productsWithInvalidQuantity.length) {
+      throw new AppError(
+        'There are products with invalid quantity in the order',
+      );
+    }
+
+    const orderProducts = await this.productsRepository.findAllById(products);
+
+    if (orderProducts.length !== products.length) {
+      throw new AppError('There are invalid products in the order');
+    }
+
+    const serializedProducts = [] as ISerializedProducts[];
+
+    products.forEach(product =>
+      orderProducts.forEach(orderProduct => {
+        if (orderProduct.quantity < product.quantity) {
+          throw new AppError(
+            `The ${orderProduct.name} doesn't have enought quantitiy`,
+          );
+        }
+
+        if (product.id === orderProduct.id) {
+          serializedProducts.push({
+            price: orderProduct.price,
+            product_id: orderProduct.id,
+            quantity: product.quantity,
+          });
+
+          orderProduct.quantity -= product.quantity;
+        }
+      }),
+    );
+
+    this.productsRepository.updateQuantity(orderProducts);
+
+    const order = await this.ordersRepository.create({
+      customer,
+      products: serializedProducts,
+    });
+
+    return order;
   }
 }
 
