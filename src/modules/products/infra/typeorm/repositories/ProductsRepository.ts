@@ -1,3 +1,4 @@
+/* eslint-disable no-param-reassign */
 import { getRepository, Repository, In } from 'typeorm';
 
 import IProductsRepository from '@modules/products/repositories/IProductsRepository';
@@ -21,21 +22,48 @@ class ProductsRepository implements IProductsRepository {
     price,
     quantity,
   }: ICreateProductDTO): Promise<Product> {
-    // TODO
+    const product = this.ormRepository.create({
+      name,
+      price,
+      quantity,
+    });
+
+    await this.ormRepository.save(product);
+
+    return product;
   }
 
   public async findByName(name: string): Promise<Product | undefined> {
-    // TODO
+    return this.ormRepository.findOne({
+      where: { name },
+    });
   }
 
   public async findAllById(products: IFindProducts[]): Promise<Product[]> {
-    // TODO
+    return this.ormRepository.find({
+      where: { id: In(products.map(product => product.id)) },
+    });
   }
 
   public async updateQuantity(
     products: IUpdateProductsQuantityDTO[],
   ): Promise<Product[]> {
-    // TODO
+    const productsToUpdate = await this.ormRepository.find({
+      where: { id: In(products.map(product => product.id)) },
+    });
+
+    productsToUpdate.forEach(productToUpdate => {
+      products.forEach(product => {
+        productToUpdate.quantity =
+          product.id === productToUpdate.id
+            ? product.quantity
+            : productToUpdate.quantity;
+      });
+    });
+
+    await this.ormRepository.save(productsToUpdate);
+
+    return productsToUpdate;
   }
 }
 
